@@ -1,0 +1,124 @@
+{
+  "id": "root",
+  "type": "row",
+  "theme": "batman",
+  "font": "JetBrains Mono",
+  "font_size": 14,
+  "ui_font": "Geist",
+  "titlebar": "none",
+  "traffic_lights": [14, 15],
+  "terminal_padding": [14, 14],
+  "terminal_opacity": 0.5,
+  "movable": false,
+  "background": { "gradient": ["#0c0e1a", "#080a12"], "angle": 180 },
+  "divider": { "width": 0, "color": "#00000000" },
+  "children": [
+    {
+      "id": "sidebar",
+      "type": "column",
+      "size": { "px": 230 },
+      "min": 44,
+      "max": 400,
+      "background": { "gradient": ["#0e1020", "#0a0c16"], "angle": 180 },
+      "border": { "width": 1, "color": "#20201e" },
+      "children": [
+        {
+          "id": "brand",
+          "type": "block",
+          "size": { "px": 44 },
+          "window_drag": true,
+          "content": { "mod": "batcave" }
+        },
+        {
+          "id": "spaces",
+          "type": "block",
+          "content": { "mod": "my-spaces" },
+          "size": { "weight": 2 },
+          "min": 140
+        },
+        {
+          "id": "agents",
+          "type": "block",
+          "content": { "mod": "my-agents" },
+          "size": { "weight": 3 },
+          "min": 260
+        },
+        {
+          "id": "sidebar-footer",
+          "type": "block",
+          "size": { "px": 112 },
+          "content": { "mod": "batcave", "props": { "footer": true } }
+        }
+      ]
+    },
+    {
+      "id": "work",
+      "type": "column",
+      "resizable": false,
+      "children": [
+        {
+          "id": "tabs",
+          "type": "block",
+          "content": { "mod": "tabs" },
+          "size": { "px": 40 },
+          "window_drag": true
+        },
+        {
+          "id": "work-body",
+          "type": "row",
+          "padding": 8,
+          "gap": 8,
+          "children": [
+            {
+              "id": "main",
+              "type": "block",
+              "content": {
+                "tab": "active",
+                "pane": {
+                  "header": {
+                    "content": { "mod": "my-pane" },
+                    "reveal": "always",
+                    "height": 28,
+                    "position": "top"
+                  },
+                  "background": { "image": "mods/batcave/screen.png", "fit": "cover" },
+                  "border": { "width": 1, "color": "#262636" },
+                  "focus": { "width": 1, "color": "#b08f1a" },
+                  "radius": 3,
+                  "gap": 6,
+                  "lone": true
+                }
+              }
+            },
+            {
+              "id": "panel",
+              "type": "column",
+              "size": { "px": 368 },
+              "min": 280,
+              "max": 900,
+              "hidden": true,
+              "children": [
+                {
+                  "id": "panel-body",
+                  "type": "stack",
+                  "active": "files",
+                  "children": [
+                    { "id": "files", "type": "block", "content": { "mod": "files" } },
+                    { "id": "changes", "type": "block", "content": { "mod": "changes" } },
+                    { "id": "inbox", "type": "block", "content": { "mod": "inbox" } }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "status",
+          "type": "block",
+          "content": { "mod": "my-status" },
+          "size": { "px": 26 }
+        }
+      ]
+    }
+  ]
+}

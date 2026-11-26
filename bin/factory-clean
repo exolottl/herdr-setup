@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+"""factory-clean: tidy up after factory builders (see factory-task).
+
+  factory-clean                 sweep: every factory worktree whose PR is merged or closed loses its builder,
+                                worktree and local branch (the work is on GitHub by then)
+  factory-clean --end <terminal>  stop that builder now and remove its worktree and local branch, whatever
+                                is in them (Pranav's End button: a pushed PR stays on GitHub)
+
+Prints one line per action. Exit code 0 unless something unexpected failed.
+"""
+import glob
+import json
+import os
+import subprocess
+import sys
+
+HC = os.path.expanduser("~/.local/bin/hc")
+GH = "/opt/homebrew/bin/gh"
+WORKTREES = os.path.expanduser("~/.herdr/worktrees")
+
+
+def run(*argv, cwd=None):
+    return subprocess.run(argv, cwd=cwd, capture_output=True, text=True, timeout=60)
+
+
+def builders():
+    """Live factory builder terminals, keyed by branch label."""
+    out = {}
+    for t in json.loads(run(HC, "ls", "--json").stdout or '{"terminals":[]}')["terminals"]:
+        if t.get("state") != "live" or not (t.get("name") or "").startswith("f-"):
+            continue
+        labels = json.loads(run(HC, "get", t["address"], "--json").stdout or "{}").get("labels") or {}
+        if labels.get("factory"):
+            out[labels.get("branch")] = {"address": t["address"], "name": t["name"], **labels}
+    return out
+
+
+def repo_root(wt):
+    common = run("git", "rev-parse", "--path-format=absolute", "--git-common-dir", cwd=wt).stdout.strip()
+    return os.path.dirname(common)
+
+
+def branch_of(wt):
+    return run("git", "branch", "--show-current", cwd=wt).stdout.strip()
+
+
+def remove(wt, branch, force):
+    """Remove a worktree and its local branch. Without force, git refuses to lose work, and so do we."""
+    root = repo_root(wt)
+    r = run("git", "worktree", "remove", *(["--force"] if force else []), wt, cwd=root)
+    if r.returncode != 0:
+        print(f"kept {wt}: {r.stderr.strip().splitlines()[-1] if r.stderr.strip() else 'git refused'}")
+        return
+    print(f"removed worktree {wt}")
+    if force:
+        ok = run("git", "branch", "-D", branch, cwd=root).returncode == 0
+    else:
+        # Only delete a branch whose commits are all on origin.
+        ahead = run("git", "rev-list", "--count", f"origin/{branch}..{branch}", cwd=root)
+        ok = ahead.returncode == 0 and ahead.stdout.strip() == "0" and run("git", "branch", "-D", branch, cwd=root).returncode == 0
+    print(f"deleted branch {branch}" if ok else f"kept branch {branch} (commits not on origin)")
+
+
+def kill(b):
+    if b and run(HC, "kill", b["address"]).returncode == 0:
+        print(f"stopped {b['name']}")
+
+
+def sweep():
+    live = builders()
+    for wt in sorted(glob.glob(f"{WORKTREES}/*/factory-*")):
+        repo = os.path.basename(os.path.dirname(wt))
+        branch = branch_of(wt)
+        if not branch.startswith("factory/"):
+            continue
+        pr = run(GH, "pr", "view", branch, "-R", f"revspot/{repo}", "--json", "state")
+        state = json.loads(pr.stdout).get("state") if pr.returncode == 0 else None
+        if state in ("MERGED", "CLOSED"):
+            print(f"{branch}: PR {state.lower()}")
+            kill(live.get(branch))
+            remove(wt, branch, force=True)
+
+
+def end(terminal):
+    live = builders()
+    b = next((x for x in live.values() if terminal in (x["address"], x["name"])), None)
+    if not b:
+        sys.exit(f"factory-clean: {terminal} is not a live factory builder")
+    kill(b)
+    wt = next((w for w in glob.glob(f"{WORKTREES}/{b.get('repo')}/factory-*") if branch_of(w) == b.get("branch")), None)
+    if wt:
+        remove(wt, b["branch"], force=True)
+
+
+if __name__ == "__main__":
+    if sys.argv[1:2] == ["--end"] and len(sys.argv) == 3:
+        end(sys.argv[2])
+    elif len(sys.argv) == 1:
+        sweep()
+    else:
+        sys.exit(__doc__)

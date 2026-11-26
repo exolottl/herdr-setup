@@ -1,0 +1,46 @@
+#!/bin/sh
+# Start Pranav's named agents. Roles: ~/.config/herdr-core/templates/<name>.md
+# Usage: hc-team            start every agent that is not already running
+#        hc-team jason      start only that one
+# A name that is already live is refused by hc and left alone.
+
+# name|Herdr space|tab in that space (both matched by name)|folder it works in|template
+# The template is optional and defaults to the name. Space and tab names may hold spaces.
+ROSTER="
+jason|Wayne Manor|Backend|/Users/pranav/Projects/work/revspot/revspot-backend
+dick|Wayne Manor|Launchpad|/Users/pranav/Projects/work/revspot/launchpad-frontend
+dick-admin|Wayne Manor|Admin|/Users/pranav/Projects/work/revspot/admin-frontend|dick
+bruce|Batcave|Bruce|/Users/pranav
+tim|Arkham Asylum|Tim|/Users/pranav/Projects/personal
+tim-harness|Wayne Manor|Harness|/Users/pranav/Projects/work/revspot/spot-harness|tim
+barbara|Batcave|Barbara|/Users/pranav
+"
+
+# Prints the hc labels that place a terminal in a space and tab, one per line.
+# Nothing when the window is closed or the space is gone; the space alone when the tab is.
+place() {
+  herdr-app ls 2>/dev/null | python3 -c '
+import json, sys
+try:
+    space = next(s for s in json.load(sys.stdin)["spaces"] if s["name"] == sys.argv[1])
+    print("herdr.space=" + space["id"])
+    print("herdr.tab=" + next(t["id"] for t in space["tabs"] if t["name"] == sys.argv[2]))
+except Exception:
+    pass' "$1" "$2"
+}
+
+echo "$ROSTER" | while IFS="|" read -r name space tab folder template; do
+  [ -n "$name" ] || continue
+  [ -z "$1" ] || [ "$1" = "$name" ] || continue
+  labels=$(place "$space" "$tab")
+  # Without a space label the agent still runs, but no tab shows it. With a space and no tab,
+  # Herdr opens a new tab for it.
+  [ -n "$labels" ] || echo "hc-team: space '$space' not found; $name will run hidden (hc attach $name)" >&2
+  flags=""
+  for label in $labels; do flags="$flags --label $label"; done
+  # --no-parent: the agent must not end when the shell that started it does.
+  # $flags is unquoted on purpose: it is a list of flags, and the ids hold no spaces.
+  hc run --bg --no-parent --name "$name" --cwd "$folder" $flags "${template:-$name}" \
+    "Read your role and the team file, then reply with one line saying what you own. Wait for a task." \
+    || echo "hc-team: $name was not started" >&2
+done

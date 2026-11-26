@@ -1,0 +1,45 @@
+onboarding = false
+
+[keys]
+# Match tmux prefix: ctrl+a instead of ctrl+b
+prefix = "ctrl+a"
+
+# Splits (| and - like tmux)
+split_vertical = "prefix+|"
+# split_horizontal = "prefix+minus"  # already default
+
+# Tab navigation (tmux window nav)
+next_tab = "prefix+n"
+previous_tab = "prefix+p"
+cycle_pane_next = "prefix+tab"
+cycle_pane_previous = "prefix+shift+tab"
+
+# Scrollback (tmux copy-mode on Enter)
+edit_scrollback = "prefix+enter"
+
+# Popup scratch terminal (tmux prefix+t)
+[[keys.command]]
+key = "prefix+t"
+type = "popup"
+command = "$SHELL"
+width = "80%"
+height = "75%"
+
+[ui]
+status_indicators = "symbols"
+
+[ui.sidebar.spaces]
+rows = [["state_icon", "workspace"]]
+
+[ui.toast]
+delivery = "terminal"
+
+[theme]
+name = "terminal"
+auto_switch = false
+
+# Batman-themed agent completion sound (added by bruce 2026-11-20).
+# Original dark heroic stinger synthesized on-box; not the copyrighted theme.
+[ui.sound]
+enabled = true
+done_path = "sounds/done.mp3"

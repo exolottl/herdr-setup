@@ -1,0 +1,5 @@
+{
+  "place": "none",
+  "title": "Factory",
+  "palette": [{ "title": "Factory board", "command": "mod.open", "args": { "name": "factory" }, "words": "software factory builders tasks prs" }]
+}
