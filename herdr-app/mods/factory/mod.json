@@ -4,11 +4,17 @@
   "palette": [
     {
       "title": "Factory board",
-      "command": "tab.select",
+      "command": "mod.open",
       "args": {
-        "id": "tb82202926a1eb19d56741cd3298368aed"
+        "name": "factory"
       },
-      "words": "software factory builders tasks prs"
+      "words": "software factory builders tasks prs pull requests"
     }
-  ]
+  ],
+  "overlay": {
+    "kind": "window",
+    "key": "factory",
+    "width": 0.86,
+    "height": 0.86
+  }
 }
