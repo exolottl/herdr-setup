@@ -1,10 +1,14 @@
 #!/bin/sh
-# factory-task <repo> <base> <task...>: start a factory builder for one task.
+# factory-task [--task-dir DIR] <repo> <base> <task...>: start a factory builder for one task.
+# DIR (from the factory board) holds attachments/; the task text is saved there as task.md and the builder
+# is told to read every attachment first.
 # Makes a git worktree on a new factory/<slug> branch off origin/<base> (so the PR holds only the builder's commit), links .env and node_modules from
 # the main checkout, and starts a `builder` agent there (template: ~/.config/herdr-core/templates/builder.md).
 # The builder implements, tests, commits, pushes and opens a draft PR into <base>. Prints the builder's name.
 set -eu
-[ $# -ge 3 ] || { echo "usage: factory-task <repo> <base> <task...>" >&2; exit 2; }
+task_dir=""
+if [ "${1:-}" = "--task-dir" ]; then task_dir=$2; shift 2; fi
+[ $# -ge 3 ] || { echo "usage: factory-task [--task-dir DIR] <repo> <base> <task...>" >&2; exit 2; }
 repo=$1; base=$2; shift 2; task=$*
 root="/Users/pranav/Projects/work/revspot/$repo"
 [ -d "$root/.git" ] || { echo "factory-task: $root is not a git repo" >&2; exit 1; }
@@ -17,6 +21,19 @@ name="f-$slug-$(date +%H%M%S)"
 
 git -C "$root" fetch -q origin "$base" || { echo "factory-task: no branch $base on origin in $repo" >&2; exit 1; }
 git -C "$root" worktree add -q -b "$branch" "$wt" "origin/$base"
+extra=""
+if [ -n "$task_dir" ]; then
+  mkdir -p "$task_dir"
+  printf '%s\n' "$task" > "$task_dir/task.md"
+  extra="
+
+Task folder: $task_dir (task.md is the task as written)."
+  if [ -d "$task_dir/attachments" ] && [ -n "$(ls -A "$task_dir/attachments")" ]; then
+    extra="$extra
+Attachments from Pranav. Read every one before you start (images are screenshots or mockups; open them):
+$(find "$task_dir/attachments" -type f | sed 's/^/- /')"
+  fi
+fi
 for f in .env node_modules; do
   [ -e "$root/$f" ] && ln -s "$root/$f" "$wt/$f"
 done
@@ -24,10 +41,10 @@ done
 # --no-parent: the builder outlives whatever started it (the board, a shell).
 /Users/pranav/.local/bin/hc run --bg --no-parent --name "$name" --cwd "$wt" \
   --label factory=1 --label "task=$slug" --label "repo=$repo" --label "branch=$branch" --label "base=$base" \
-  --label herdr.space=spfactory --label "herdr.tab=tbfactory-$id" \
+  --label "taskdir=$task_dir" --label herdr.space=spfactory --label "herdr.tab=tbfactory-$id" \
   builder "Repo: $repo. Worktree: $wt. Branch: $branch. Base: $base.
 
-Task from Pranav: $task" >/dev/null
+Task from Pranav: $task$extra" >/dev/null
 # Its own tab in the Factory space (herdr-app shows any terminal with these labels, making the space or tab
 # if new). Name both once the window has them; without an open window this does nothing.
 tab_name="$slug · $(echo "$repo" | sed 's/-frontend$//; s/^revspot-//')"

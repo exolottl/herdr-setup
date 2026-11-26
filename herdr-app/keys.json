@@ -58,7 +58,12 @@
     "ctrl-7": "space.select:7",
     "ctrl-8": "space.select:8",
     "ctrl-9": "space.select:9",
-    "cmd-shift-f": "mod.open:factory"
+    "cmd-shift-f": {
+      "command": "tab.select",
+      "args": {
+        "id": "tb82202926a1eb19d56741cd3298368aed"
+      }
+    }
   },
   "terminal": {
     "cmd-f": "terminal.search",

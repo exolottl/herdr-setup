@@ -1,12 +1,13 @@
 // Factory board: new tasks, the builders working on them, the team, and your open PRs.
-// Opens as an overlay with cmd-shift-f or "Factory board" in the palette; again (or Esc) closes it.
-// "New task": type a requirement, pick the repo, Enter runs `factory-task`. That starts a separate builder
-// agent in its own worktree and branch, which implements, tests and opens a draft PR into beta.
-// The team's own sessions (jason, dick, ...) are never sent anything from here.
+// Lives as the "Board" tab of the Factory space (cmd-shift-f goes there).
+// "New task": describe it, attach images or files (drop them, or + Attach), pick the repo and the base
+// branch, then Build now. Each task gets a folder, data/factory/tasks/<id>/ under ~/.config/herdr-app,
+// holding task.md and attachments/; `factory-task` starts a builder in its own worktree and branch, gives
+// it the folder, and the builder opens a one-commit draft PR. The team's own sessions are never used.
 
-import { View, div } from "gpui-kit";
-import { v_flex, h_flex, InputState, Input } from "gpui-base";
-import { terminals, agents, theme, run, exec, hc, checking, window } from "herdr";
+import { View, div, image } from "gpui-kit";
+import { v_flex, h_flex, InputState, Input, TextareaState, Textarea } from "gpui-base";
+import { terminals, agents, theme, run, exec, hc, checking, window, appHome, pickFiles } from "herdr";
 
 // The roster in ~/.config/herdr-core/team.md.
 const TEAM = ["jason", "dick", "dick-admin", "bruce", "tim", "tim-harness", "barbara"];
@@ -25,6 +26,10 @@ const FACTORY_TASK = "/Users/pranav/.local/bin/factory-task";
 const FACTORY_CLEAN = "/Users/pranav/.local/bin/factory-clean";
 const GH = "/opt/homebrew/bin/gh";
 const GH_EVERY = 120_000;
+// Task folders sit under the app's home so image() can show attachment thumbnails (it reads only there).
+const TASKS_REL = "data/factory/tasks";
+const IMAGE = /\.(png|jpe?g|gif|webp|svg|bmp|tiff?)$/i;
+const newId = () => new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
 
 const color = (t, status) => ({ working: t.working, blocked: t.blocked, done: t.done, idle: t.idle }[status] ?? t.unknown);
 const hhmm = () => new Date().toTimeString().slice(0, 5);
@@ -38,9 +43,9 @@ export default class Factory extends View {
     this.repo = REPOS.includes(localStorage.getItem("factory.repo")) ? localStorage.getItem("factory.repo") : REPOS[0];
     this.sent = ""; // last start's result line
     try { this.bases = JSON.parse(localStorage.getItem("factory.bases") ?? "{}"); } catch { this.bases = {}; }
-    this.input = InputState.new({ placeholder: "Describe a task, Enter starts a builder…" });
-    this.input.on("submit", (_e, cx) => this.start(cx));
-    this.input.focus();
+    this.input = TextareaState.new({ placeholder: "Describe the task: what, why, anything a builder should know…", rows: 5 });
+    this.tasks = `${appHome()}/${TASKS_REL}`;
+    this.draft = { id: newId(), files: [] }; // the task being written: its folder id and its attachments
     // The builder whose row is expanded, its last screen lines, and the box that instructs it.
     this.sel = null;
     this.tail = [];
@@ -60,12 +65,15 @@ export default class Factory extends View {
     if (!text) return;
     const repo = this.repo;
     const base = this.base(repo);
+    const dir = `${this.tasks}/${this.draft.id}`;
     this.sent = `Starting a builder in ${repo} → ${base}…`;
     cx.notify();
     cx.spawn(async (cx) => {
-      const r = await exec(FACTORY_TASK, [repo, base, text], { timeout: 120_000 }).catch((e) => ({ code: 1, stderr: String(e) }));
+      const r = await exec(FACTORY_TASK, ["--task-dir", dir, repo, base, text], { timeout: 120_000 })
+        .catch((e) => ({ code: 1, stderr: String(e) }));
       if (r.code === 0) {
         this.input.set_value("");
+        this.draft = { id: newId(), files: [] };
         this.sent = `Started ${r.stdout.trim()} in ${repo} → ${base} ✓`;
       } else {
         this.sent = `Not started: ${firstLine(r)}`;
@@ -77,6 +85,30 @@ export default class Factory extends View {
   close() {
     this.input?.release();
     this.reply?.release();
+  }
+
+  // Copy files into the draft task's attachments/ folder. Same-named files get a number.
+  attach(paths, cx) {
+    if (!paths?.length) return;
+    const dir = `${this.tasks}/${this.draft.id}/attachments`;
+    cx.spawn(async (cx) => {
+      await exec("/bin/mkdir", ["-p", dir]);
+      for (const path of paths) {
+        let name = path.split("/").pop();
+        for (let n = 2; this.draft.files.some((f) => f.name === name); n++) name = name.replace(/(\.[^.]*)?$/, `-${n}$1`);
+        const r = await exec("/bin/cp", ["-R", path, `${dir}/${name}`]).catch((e) => ({ code: 1, stderr: String(e) }));
+        if (r.code !== 0) { this.sent = `Not attached: ${name}: ${firstLine(r)}`; continue; }
+        this.draft.files.push({ name, rel: `${TASKS_REL}/${this.draft.id}/attachments/${name}`, isImage: IMAGE.test(name) });
+      }
+      cx.notify();
+    });
+  }
+
+  detach(name, cx) {
+    const dir = `${this.tasks}/${this.draft.id}/attachments`;
+    this.draft.files = this.draft.files.filter((f) => f.name !== name);
+    cx.spawn(async () => { await exec("/bin/rm", ["-rf", `${dir}/${name}`]); });
+    cx.notify();
   }
 
   select(address, cx) {
@@ -255,19 +287,34 @@ export default class Factory extends View {
       .child(base);
     const intake = v_flex().gap(6)
       .child(div().text_size(11).font_semibold().text_color(t.muted).child("NEW TASK"))
-      .child(Input.new(this.input).h(34).px(10).rounded(8).border_1().border_color(t.input).bg(t.background)
+      .child(Textarea.new(this.input).h(110).px(10).py(8).rounded(8).border_1().border_color(t.input).bg(t.background)
         .text_size(12.8).text_color(t.foreground))
+      .child(h_flex().gap(6).items_center().flex_wrap()
+        .children(this.draft.files.map((f) => h_flex().id(`att-${f.name}`).gap(6).pl(4).pr(8).py(3).rounded(8)
+          .border_1().border_color(t.border).bg(t.background).items_center()
+          .child(f.isImage ? image(f.rel).w(28).h(28).rounded(4).flex_none()
+            : div().w(28).h(28).rounded(4).bg(t.raised).flex_none().items_center().justify_center().flex().child("📄"))
+          .child(div().max_w(180).truncate().text_color(t.foreground).child(f.name))
+          .child(div().id(`detach-${f.name}`).text_color(t.dim).cursor_pointer().hover((s) => s.text_color(t.blocked))
+            .on_click((_e, cx) => this.detach(f.name, cx)).child("×"))))
+        .child(div().id("attach").text_color(t.accent).cursor_pointer().hover((s) => s.text_color(t.foreground))
+          .on_click((_e, cx) => cx.spawn(async (cx) => this.attach(await pickFiles({ prompt: "Attach to this task", multiple: true }), cx)))
+          .child("+ Attach"))
+        .child(div().text_color(t.dim).child("or drop images and files anywhere here")))
       .child(h_flex().gap(6).items_center().flex_wrap()
         .child(div().w(36).text_color(t.dim).child("in"))
         .children(REPOS.map(chip)))
       .child(h_flex().gap(6).items_center().flex_wrap()
         .child(div().w(36).text_color(t.dim).child("PR to"))
         .children(BASES[this.repo].map(baseChip)))
-      .child(div().text_color(t.dim).child(
-        `A new builder branches off ${this.base(this.repo)} and opens a one-commit draft PR into ${this.base(this.repo)}.`))
+      .child(h_flex().gap(10).items_center()
+        .child(h_flex().id("build").px(14).py(6).rounded(8).bg(t.solid).text_color(t.solid_foreground).font_semibold()
+          .cursor_pointer().hover((s) => s.opacity(0.88)).on_click((_e, cx) => this.start(cx)).child("Build now"))
+        .child(div().flex_1().text_color(t.dim).child(
+          `A builder branches off ${this.base(this.repo)} and opens a one-commit draft PR into ${this.base(this.repo)}.`)))
       .when(!!this.sent, (el) => el.child(div().text_color(this.sent.startsWith("Not") ? t.blocked : t.dim).child(this.sent)));
 
-    return v_flex().size_full().max_h(680).p(14).gap(14).bg(t.popover).text_size(12.5).overflow_y_scrollbar()
+    const body = v_flex().w_full().max_w(880).gap(18)
       .child(h_flex().gap(12).justify_between()
         .child(div().text_size(14).font_semibold().text_color(t.foreground).child("Factory"))
         .child(div().id("refresh").text_color(t.dim).hover((s) => s.text_color(t.foreground))
@@ -277,5 +324,9 @@ export default class Factory extends View {
       .child(this.section(t, "Your open PRs", prs, this.prs === null ? "Loading…" : "None open."))
       .child(this.section(t, "Team", team, "No team agents running (hc-team starts them)."))
       .when(!!this.error, (el) => el.child(div().text_color(t.blocked).child(this.error)));
+    // A tab of its own: the whole pane scrolls, files dropped anywhere on it attach to the draft.
+    return v_flex().id("factory-root").size_full().bg(t.surface).text_size(12.5).overflow_y_scrollbar()
+      .on_drop((e, cx) => this.attach(e.paths, cx))
+      .child(h_flex().w_full().justify_center().px(24).py(20).child(body));
   }
 }
