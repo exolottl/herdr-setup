@@ -1,0 +1,76 @@
+#!/bin/sh
+# herdr-setup-sync: copy my Herdr setup into ~/herdr-setup and push it to github.com/exolottl/herdr-setup
+# (public) when something changed. Run by the LaunchAgent com.pranav.herdr-setup-sync every 10 minutes, or by hand.
+# Copies only what I made: Herdr's shipped mods, layouts and themes, and files the app generates, stay out.
+# Before pushing it looks for key and token shapes; on a hit it pushes nothing and shows a notification.
+set -eu
+REPO="${HERDR_SETUP_REPO:-$HOME/herdr-setup}"  # another folder for testing
+APP="$HOME/.config/herdr-app"
+notify() { osascript -e "display notification \"$1\" with title \"herdr-setup sync\"" >/dev/null 2>&1 || true; }
+
+cd "$REPO"
+# Mirror one folder. The patterns are quoted: unquoted, the shell expands '.*' to '.' and '..' and rsync
+# would read the parent folder as a source.
+sync_dir() {
+  [ -d "$1" ] || return 0
+  rsync -a --delete --exclude='*.d.ts' --exclude='jsconfig.json' --exclude='node_modules' --exclude='.*' "$1" "$2"
+}
+
+# herdr-app: every mod, layout and theme Herdr did not ship, plus keys, settings and programs.
+shipped=$(/usr/bin/python3 -c 'import json,sys; print(" ".join(json.load(open(sys.argv[1]))))' "$APP/installed.json")
+mkdir -p herdr-app/mods herdr-app/layouts herdr-app/themes
+for d in "$APP"/mods/*/; do
+  m=$(basename "$d")
+  case " $shipped " in *" $m "*) continue ;; esac
+  sync_dir "$d" "herdr-app/mods/$m/"
+done
+for d in herdr-app/mods/*/; do  # a mod I deleted goes from the repo too
+  [ -d "$APP/mods/$(basename "$d")" ] || rm -rf "$d"
+done
+rm -f herdr-app/layouts/*.json herdr-app/themes/*.json
+for f in "$APP"/layouts/*.json; do
+  n=$(basename "$f" .json)
+  case " $shipped " in *" layout:$n "*) continue ;; esac
+  cp "$f" herdr-app/layouts/
+done
+for f in "$APP"/themes/*.json; do
+  case "$(basename "$f")" in atom-one-dark.json | win98.json) continue ;; esac  # shipped with Herdr
+  cp "$f" herdr-app/themes/
+done
+cp "$APP/keys.json" "$APP/settings.json" "$APP/programs.json" herdr-app/
+
+# The agent team (not handoffs or proposals), the terminal herdr, and the scripts.
+mkdir -p herdr-core herdr-tui bin
+sync_dir "$HOME/.config/herdr-core/templates/" herdr-core/templates/
+sync_dir "$HOME/.config/herdr-core/workflows/" herdr-core/workflows/
+cp "$HOME/.config/herdr-core/team.md" herdr-core/
+cp "$HOME/.config/herdr/config.toml" herdr-tui/
+sync_dir "$HOME/.config/herdr/sounds/" herdr-tui/sounds/
+cp "$HOME/.local/bin/hc-team" "$HOME/.local/bin/factory-task" "$HOME/.local/bin/factory-clean" \
+   "$HOME/.local/bin/herdr-setup-sync" bin/
+
+git add -A
+if git diff --cached --quiet; then exit 0; fi
+
+# ponytail: pattern check for common key and token shapes; a real scanner (gitleaks) if this repo grows.
+# This script is left out: it holds the patterns themselves.
+if git diff --cached -U0 -- . ':!bin/herdr-setup-sync' | grep -E '^\+' | grep -q -E \
+  'gh[pousr]_[A-Za-z0-9]{30,}|github_pat_|xox[abprs]-|sk-[A-Za-z0-9_-]{20,}|sk-ant-|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|-----BEGIN [A-Z ]*PRIVATE KEY'; then
+  git reset -q
+  echo "$(date '+%F %T') stopped: a change looks like it holds a key or token; nothing pushed"
+  notify "Stopped: a change looks like a key or token. Nothing was pushed."
+  exit 1
+fi
+
+changed=$(git diff --cached --name-only | sed 's#/.*##' | sort -u | tr '\n' ' ')
+git commit -q -m "Sync: ${changed% }"
+if [ "${HERDR_SETUP_DRY:-}" = 1 ]; then echo "dry run: committed, not pushed: ${changed% }"; exit 0; fi
+T=$(/opt/homebrew/bin/gh auth token --user exolottl)
+if git -c credential.helper= push -q "https://x-access-token:$T@github.com/exolottl/herdr-setup.git" main 2>/dev/null; then
+  git fetch -q origin main 2>/dev/null || true
+  echo "$(date '+%F %T') pushed: ${changed% }"
+else
+  echo "$(date '+%F %T') push failed; the commit is kept and goes with the next sync"
+  notify "Push to exolottl/herdr-setup failed; it retries on the next sync."
+  exit 1
+fi
