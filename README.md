@@ -14,10 +14,29 @@ Copy each folder to where it goes. herdr-app reloads layouts, keys and mods as t
 
 ## Software factory
 
-Press ⌘⇧F in herdr-app to open the board. Type a task, pick the repo and the branch the PR should go to,
-and press Enter. `factory-task` makes a git worktree on a new branch cut from that base and starts a
-`builder` agent there, in its own tab in a Factory space. The builder implements the change, runs the checks,
-and opens a one-commit draft PR. On the board you can pause, play, interrupt or instruct a builder, open its
-tab or PR, or end it. End stops it and removes its worktree and local branch.
+Two floating windows in herdr-app. Typed ideas become PRDs; typed tasks (or PRDs) become one-commit draft PRs,
+each built by its own agent in its own git worktree, so your normal sessions are never touched.
+
+| Piece | File | What it does |
+| --- | --- | --- |
+| PRD writer (⌘⇧R) | `herdr-app/mods/prd/` | Idea + attachments + repos → starts a `planner`, shows `PRD.md` live, answer its questions, **Build** hands it to the factory (one builder per repo, backend first) |
+| Factory board (⌘⇧F) | `herdr-app/mods/factory/` | Task + attachments + repo + base branch → **Build now**; pause / play / interrupt / instruct / open / end builders; your open PRs with a built-in PR viewer (description, checks, diff, Ready for review) |
+| `planner` | `herdr-core/templates/planner.md` | Sonnet agent: reads the repos (never edits), asks at most 3 questions, writes `PRD.md` |
+| `builder` | `herdr-core/templates/builder.md` | Implements one task in its worktree, runs checks, one clean commit, draft PR into the chosen base, labels `pr=<url>`; stops with an `ask` label when unsure |
+| `factory-task` | `bin/factory-task` | `factory-task [--task-dir DIR] <repo> <base> "<task>"`: worktree + `factory/<slug>-<id>` branch cut from `origin/<base>`, starts a builder in its own tab of a Factory space |
+| `factory-clean` | `bin/factory-clean` | `--end <builder>` stops it and removes its worktree and branch; with no args, clears builders whose PR is merged or closed |
+| Hotkeys | `herdr-app/keys.json` | `cmd-shift-f` → `mod.open:factory`, `cmd-shift-r` → `mod.open:prd` |
+
+### Set it up
+
+Needs herdr-app, herdr-core (`hc`), Claude Code, `gh` (logged in), git.
+
+1. Copy `herdr-app/mods/{factory,prd}` to `~/.config/herdr-app/mods/`, and the two hotkeys into your `keys.json`.
+2. Copy `herdr-core/templates/{builder,planner}.md` to `~/.config/herdr-core/templates/`.
+3. Copy `bin/factory-task` and `bin/factory-clean` to `~/.local/bin/` and `chmod +x` them.
+4. Edit for your machine: the repo list and base branches (`REPOS`, `BASES` at the top of both mods' `main.js`),
+   the repos root and GitHub org (`revspot`) in `factory-task`, `factory-clean`, the mods and the templates,
+   and the test commands in `builder.md` step 6.
+5. Press ⌘⇧F, type a task, pick repo and base, Build now. Data lives under `~/.config/herdr-app/data/{factory,prd}/`.
 
 Paths in the scripts and templates are for this machine (`/Users/pranav/...`): change them to match yours.
