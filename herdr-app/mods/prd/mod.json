@@ -1,0 +1,13 @@
+{
+  "place": "none",
+  "title": "PRDs",
+  "palette": [
+    {
+      "title": "PRD writer",
+      "command": "mod.open",
+      "args": { "name": "prd" },
+      "words": "prd plan requirements product spec planner write"
+    }
+  ],
+  "overlay": { "kind": "window", "key": "prd", "width": 0.86, "height": 0.86 }
+}
