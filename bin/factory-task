@@ -20,7 +20,7 @@ wt="$HOME/.herdr/worktrees/$repo/factory-$slug-$id"
 name="f-$slug-$(date +%H%M%S)"
 
 git -C "$root" fetch -q origin "$base" || { echo "factory-task: no branch $base on origin in $repo" >&2; exit 1; }
-git -C "$root" worktree add -q -b "$branch" "$wt" "origin/$base"
+git -C "$root" worktree add -q --no-track -b "$branch" "$wt" "origin/$base"
 extra=""
 if [ -n "$task_dir" ]; then
   mkdir -p "$task_dir"

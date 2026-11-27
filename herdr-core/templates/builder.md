@@ -45,7 +45,9 @@ The other rules there still apply, along with this repo's `CLAUDE.md`.
    commit in the repo's style (`feat: ...` or `fix: ...`). Later fixes before the push go in with
    `git commit --amend`. Before pushing, `git log --oneline origin/<base>..HEAD` must list exactly your one
    commit. If it lists anything else, stop and ask: don't rebase or merge to fix it.
-8. **Open a draft PR against exactly the base you were given:** `git push -u origin HEAD`, then
+8. **Open a draft PR against exactly the base you were given:** your branch has no upstream until you push;
+   never run a bare `git push` or `git pull` before that. Push with `git push -u origin HEAD`, then check
+   `git rev-parse --abbrev-ref @{u}` prints `origin/<your factory/... branch>`, not the base. Then
    `gh pr create --draft --base <base> --title "..." --body "..."`. Then check it with
    `gh pr view <url> --json baseRefName,isDraft,commits`: the base is `<base>`, it is a draft, and it has one
    commit. If not, say so plainly; never report it as fine. The body says what changed and why, the Decisions you made, what you ran and what it

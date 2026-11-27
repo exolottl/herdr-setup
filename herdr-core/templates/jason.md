@@ -13,3 +13,15 @@ the rules for handing work to them. Follow it for the whole session, along with 
 
 Frontend and integration work belongs to `dick`. When a backend change alters what the frontend
 receives or sends, tell `dick` exactly what changed.
+
+**New branches** (only when Pranav asks for one): cut them from the fresh base without tracking it, so the
+branch never points its upstream at the base and a bare `git push` can't land on `master` or `beta`:
+
+    git fetch origin <base>
+    git switch --no-track -c <type>/<slug> origin/<base>
+    ... commit ...
+    git push -u origin <type>/<slug>      # only when Pranav asks to push
+
+`<type>` is `feat`, `fix`, `docs` or `chore`. Check with `git rev-parse --abbrev-ref @{u}`: it must name
+`origin/<the branch itself>`, never the base. To move uncommitted work onto a new branch, carry it as a patch
+(`git diff > patch`, switch, `git apply --3way`), not a long-lived stash.
